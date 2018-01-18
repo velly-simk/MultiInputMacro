@@ -35,7 +35,7 @@
                     Everyone's favorite status bar! Execute needs to become async!
                 </StatusBarItem>
                 <StatusBarItem HorizontalAlignment="Right">
-                    <ProgressBar x:Name="progBar" Width="100" Height="15" />
+                    <ProgressBar x:Name="progBar" Width="100" Height="15" ValueChanged="progBar_ValueChanged" />
                 </StatusBarItem>
             </StatusBar>
 

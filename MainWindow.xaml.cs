@@ -13,6 +13,7 @@ using System.Windows.Shapes;
 using System.Globalization;
 using System.Diagnostics;
 using System.Threading;
+using System.ComponentModel;
 
 namespace MultiInputMacro
 {
@@ -21,6 +22,18 @@ namespace MultiInputMacro
     /// </summary>
     public partial class MainWindow : Window
     {
+        private delegate void Action();
+
+        int currentRunningJobs = 0,
+            maxRunningJobs = 1;
+
+        private class BOX
+        {
+            public object item;
+            public Process process = new Process();
+            public int result = 0;
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -105,70 +118,181 @@ namespace MultiInputMacro
             }
         }
 
-        private void executeButton_Click(object sender, RoutedEventArgs e)
+        private void worker_doWork(object sender, DoWorkEventArgs e)
         {
-            
-            if (selectedListBox.Items.Count < 1) return;
+            BOX items = e.Argument as BOX;
 
-            int TIMEOUT = (int)Properties.Settings.Default.Timeout; // 5 second timeout, remove hard code
-            Process myProcess = new Process();
-
-            myProcess.StartInfo.CreateNoWindow = true;
-            myProcess.StartInfo.UseShellExecute = false;
-
-            // sets has exited to non null value, prevents an exception later
-            myProcess.StartInfo.FileName = "cmd.exe";
-            myProcess.Start();
-            myProcess.Kill();
-
-            myProcess.StartInfo.FileName = executionProgramBox.Text;
-
+            int timeout = (int)Properties.Settings.Default.Timeout;
             try
             {
-                int i = -1; // index of item being processed
-                while (true)
+                items.process.Start();
+
+                for (int elapsedTime = 100; !items.process.HasExited && (elapsedTime < timeout); elapsedTime += 100)
                 {
-                    // wait for completion up to timeout time
-                    for (int elapsedTime = 100; !myProcess.HasExited && elapsedTime < TIMEOUT; elapsedTime+=100)
-                    {
-                        Thread.Sleep(100);
-                    }
-                    // if process still has not completed, end it;
-                    if (!myProcess.HasExited)
-                    {
-                        myProcess.Kill();
-                        ++i; // move to next index
-                    }
-                    // only if item has been processed, remove it from list
-                    if (myProcess.ExitCode == 0)
-                    {
-                        selectedListBox.Items.RemoveAt(i);
-                    }
-                    else
-                    {
-                        ++i; // move to next index
-                    }
-                    // if index is out of list range, break out of execution loop
-                    if (!(i < selectedListBox.Items.Count))
-                    {
-                        break;
-                    }
-                    // execution arguments
-                    myProcess.StartInfo.Arguments = "";
-                    myProcess.StartInfo.Arguments += Properties.Settings.Default.Parameters + " ";
-                    myProcess.StartInfo.Arguments += Properties.Settings.Default.Prefix + "\"";
-                    myProcess.StartInfo.Arguments += selectedListBox.Items.GetItemAt(i).ToString() + "\"";
-                    // "-s \"" + selectedListBox.Items.GetItemAt(i).ToString() + "\"";
-                    // execute process
-                    myProcess.Start();
+                    Thread.Sleep(100);
                 }
+                if (!items.process.HasExited)
+                {
+                    items.process.Kill();
+                }
+                items.result = items.process.ExitCode;
+                e.Result = items;
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
+                items.result = -1;
+                e.Result = items;
+            }
+        }
+
+        private void worker_complete(object sender, RunWorkerCompletedEventArgs e)
+        {
+            BOX item = e.Result as BOX;
+            if (item.result == 0)
+            {
+                lock (selectedListBox.Items)
+                {
+                    selectedListBox.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, new Action(() =>
+                    selectedListBox.Items.Remove(item.item)));
+                }
+            }
+            lock (progBar)
+            {
+                progBar.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, new Action(() =>
+                ++progBar.Value));
+            }
+            Interlocked.Decrement(ref currentRunningJobs);
+        }
+
+        private void dispatcher_doWork(object sender, DoWorkEventArgs e)
+        {
+            Queue<BOX> jobs = e.Argument as Queue<BOX>;
+
+            while (jobs.Count > 0)
+            {
+                BOX job = jobs.Dequeue();
+                while (currentRunningJobs >= maxRunningJobs)
+                {
+                    Thread.Sleep(200);
+                }
+
+                BackgroundWorker worker = new BackgroundWorker();
+                worker.DoWork += worker_doWork;
+                worker.RunWorkerCompleted += worker_complete;
+                Interlocked.Increment(ref currentRunningJobs);
+                worker.RunWorkerAsync(job);
+            }
+        }
+
+
+        private void executeButton_Click(object sender, RoutedEventArgs e)
+        {
+            // freeze components which could screw up execution.
+            executeButton.IsEnabled = false;
+            selectedListBox.AllowDrop = false;
+            executionProgramButton.IsEnabled = false;
+            selectedFilesButton.IsEnabled = false;
+            progBar.Maximum = selectedListBox.Items.Count;
+            progBar.Minimum = 0;
+
+            Queue<BOX> jobs = new Queue<BOX>();
+
+            // All jobs have these properties.
+            Process general = new Process();
+            general.StartInfo.CreateNoWindow = false;
+            general.StartInfo.UseShellExecute = false;
+            general.StartInfo.FileName = executionProgramBox.Text;
+
+            // enqueue each job
+            foreach (object item in selectedListBox.Items)
+            {
+                BOX job = new BOX();
+
+                job.process = general;
+
+                job.process.StartInfo.Arguments = "";
+                job.process.StartInfo.Arguments += Properties.Settings.Default.Parameters + " ";
+                job.process.StartInfo.Arguments += Properties.Settings.Default.Prefix + "\"";
+                job.process.StartInfo.Arguments += item.ToString() + "\"";
+
+                job.item = item;
+
+                jobs.Enqueue(job);
             }
 
+            // give jobs to workers
+
+            BackgroundWorker dispatcher = new BackgroundWorker();
+            dispatcher.DoWork += dispatcher_doWork;
+            dispatcher.RunWorkerAsync(jobs);
+
         }
+
+
+        /*
+
+if (selectedListBox.Items.Count < 1) return;
+
+int TIMEOUT = (int)Properties.Settings.Default.Timeout; // 5 second timeout, remove hard code
+Process myProcess = new Process();
+
+myProcess.StartInfo.CreateNoWindow = true;
+myProcess.StartInfo.UseShellExecute = false;
+
+// sets has exited to non null value, prevents an exception later
+myProcess.StartInfo.FileName = "cmd.exe";
+myProcess.Start();
+myProcess.Kill();
+
+myProcess.StartInfo.FileName = executionProgramBox.Text;
+
+try
+{
+   int i = -1; // index of item being processed
+   while (true)
+   {
+       // wait for completion up to timeout time
+       for (int elapsedTime = 100; !myProcess.HasExited && elapsedTime < TIMEOUT; elapsedTime+=100)
+       {
+           Thread.Sleep(100);
+       }
+       // if process still has not completed, end it;
+       if (!myProcess.HasExited)
+       {
+           myProcess.Kill();
+           ++i; // move to next index
+       }
+       // only if item has been processed, remove it from list
+       if (myProcess.ExitCode == 0)
+       {
+           selectedListBox.Items.RemoveAt(i);
+       }
+       else
+       {
+           ++i; // move to next index
+       }
+       // if index is out of list range, break out of execution loop
+       if (!(i < selectedListBox.Items.Count))
+       {
+           break;
+       }
+       // execution arguments
+       myProcess.StartInfo.Arguments = "";
+       myProcess.StartInfo.Arguments += Properties.Settings.Default.Parameters + " ";
+       myProcess.StartInfo.Arguments += Properties.Settings.Default.Prefix + "\"";
+       myProcess.StartInfo.Arguments += selectedListBox.Items.GetItemAt(i).ToString() + "\"";
+       // "-s \"" + selectedListBox.Items.GetItemAt(i).ToString() + "\"";
+       // execute process
+       myProcess.Start();
+   }
+}
+catch (Exception ex)
+{
+   MessageBox.Show(ex.Message);
+}
+
+}
+*/
 
         private void autoExecCheckBox_Checked(object sender, RoutedEventArgs e)
         {
@@ -189,6 +313,17 @@ namespace MultiInputMacro
         private void window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             Properties.Settings.Default.ExecutionProgram = executionProgramBox.Text;
+        }
+
+        private void progBar_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (progBar.Value >= progBar.Maximum)
+            {
+                executeButton.IsEnabled = true;
+                selectedListBox.AllowDrop = true;
+                executionProgramButton.IsEnabled = true;
+                selectedFilesButton.IsEnabled = true;
+            }
         }
     }
 
