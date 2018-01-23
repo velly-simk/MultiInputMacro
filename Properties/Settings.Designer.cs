@@ -74,12 +74,48 @@ namespace MultiInputMacro.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("")]
-        public string ExecutionProgram {
+        public string ExecutablePath {
             get {
-                return ((string)(this["ExecutionProgram"]));
+                return ((string)(this["ExecutablePath"]));
             }
             set {
-                this["ExecutionProgram"] = value;
+                this["ExecutablePath"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("1")]
+        public uint MaximumInstances {
+            get {
+                return ((uint)(this["MaximumInstances"]));
+            }
+            set {
+                this["MaximumInstances"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string ExecutionDirectory {
+            get {
+                return ((string)(this["ExecutionDirectory"]));
+            }
+            set {
+                this["ExecutionDirectory"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool NoWindowMode {
+            get {
+                return ((bool)(this["NoWindowMode"]));
+            }
+            set {
+                this["NoWindowMode"] = value;
             }
         }
     }

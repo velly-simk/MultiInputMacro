@@ -14,6 +14,7 @@ using System.Globalization;
 using System.Diagnostics;
 using System.Threading;
 using System.ComponentModel;
+using System.Windows.Media.Animation;
 
 namespace MultiInputMacro
 {
@@ -22,10 +23,10 @@ namespace MultiInputMacro
     /// </summary>
     public partial class MainWindow : Window
     {
+        int currentRunningJobs = 0;
         private delegate void Action();
+        
 
-        int currentRunningJobs = 0,
-            maxRunningJobs = 1;
 
         private class BOX
         {
@@ -37,8 +38,6 @@ namespace MultiInputMacro
         public MainWindow()
         {
             InitializeComponent();
-            autoExecCheckBox.IsChecked = Properties.Settings.Default.AutoExecute;
-            executionProgramBox.Text = Properties.Settings.Default.ExecutionProgram;
         }
 
         ~MainWindow()
@@ -54,26 +53,17 @@ namespace MultiInputMacro
 
                 foreach (string file in files)
                 {
-                    if (!selectedListBox.Items.Contains(file))
+                    if (!listbox_SelectedItems.Items.Contains(file))
                     {
-                        selectedListBox.Items.Add(file);
+                        listbox_SelectedItems.Items.Add(file);
                     }
                 }
 
-                if (autoExecCheckBox.IsChecked == true)
+                if (Properties.Settings.Default.AutoExecute)
                 {
                     executeButton_Click(sender,e);
                 }
 
-            }
-        }
-
-        private void Executable_Drop(object sender, DragEventArgs e)
-        {
-            if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            {
-                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                executionProgramBox.Text = files[0];
             }
         }
 
@@ -84,20 +74,6 @@ namespace MultiInputMacro
 
         // make separate preview drag overs for exes and inis
 
-        private void executionProgramButton_Click(object sender, RoutedEventArgs e)
-        {
-            Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
-            dlg.DefaultExt = ".exe";
-            dlg.Filter = "Executable (.exe)|*.exe";
-            dlg.Multiselect = false;
-
-            Nullable<bool> result = dlg.ShowDialog();
-
-            if (result == true)
-            {
-                executionProgramBox.Text = dlg.FileName;
-            }
-        }
 
         private void selectedFilesButton_Click(object sender, RoutedEventArgs e)
         {
@@ -110,9 +86,9 @@ namespace MultiInputMacro
             {
                 foreach (string file in dlg.FileNames)
                 {
-                    if (!selectedListBox.Items.Contains(file))
+                    if (!listbox_SelectedItems.Items.Contains(file))
                     {
-                        selectedListBox.Items.Add(file);
+                        listbox_SelectedItems.Items.Add(file);
                     }
                 }
             }
@@ -138,7 +114,7 @@ namespace MultiInputMacro
                 items.result = items.process.ExitCode;
                 e.Result = items;
             }
-            catch (Exception ex)
+            catch
             {
                 items.result = -1;
                 e.Result = items;
@@ -150,10 +126,10 @@ namespace MultiInputMacro
             BOX item = e.Result as BOX;
             if (item.result == 0)
             {
-                lock (selectedListBox.Items)
+                lock (listbox_SelectedItems.Items)
                 {
-                    selectedListBox.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, new Action(() =>
-                    selectedListBox.Items.Remove(item.item)));
+                    listbox_SelectedItems.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, new Action(() =>
+                    listbox_SelectedItems.Items.Remove(item.item)));
                 }
             }
             lock (progBar)
@@ -171,9 +147,9 @@ namespace MultiInputMacro
             while (jobs.Count > 0)
             {
                 BOX job = jobs.Dequeue();
-                while (currentRunningJobs >= maxRunningJobs)
+                while (currentRunningJobs >= (int)Properties.Settings.Default.MaximumInstances)
                 {
-                    Thread.Sleep(200);
+                    Thread.Sleep(100);
                 }
 
                 BackgroundWorker worker = new BackgroundWorker();
@@ -181,6 +157,7 @@ namespace MultiInputMacro
                 worker.RunWorkerCompleted += worker_complete;
                 Interlocked.Increment(ref currentRunningJobs);
                 worker.RunWorkerAsync(job);
+                Thread.Sleep(100); // ensures multiple instances are not started at the same time up to the ms resolution
             }
         }
 
@@ -188,27 +165,28 @@ namespace MultiInputMacro
         private void executeButton_Click(object sender, RoutedEventArgs e)
         {
             // freeze components which could screw up execution.
-            executeButton.IsEnabled = false;
-            selectedListBox.AllowDrop = false;
-            executionProgramButton.IsEnabled = false;
-            selectedFilesButton.IsEnabled = false;
-            progBar.Maximum = selectedListBox.Items.Count;
-            progBar.Minimum = 0;
+            button_Execute.IsEnabled = false;
+            listbox_SelectedItems.AllowDrop = false;
+            button_SelectFiles.IsEnabled = false;
+            button_Settings.IsEnabled = false;
+            progBar.Maximum = listbox_SelectedItems.Items.Count;
+            swapProgBarColors(ref progBar);
+            toggleStatusInfoVisibility();
+            progBar.Value = progBar.Minimum = 0;
+            progBar.Visibility = Visibility.Visible;
+
 
             Queue<BOX> jobs = new Queue<BOX>();
 
-            // All jobs have these properties.
-            Process general = new Process();
-            general.StartInfo.CreateNoWindow = false;
-            general.StartInfo.UseShellExecute = false;
-            general.StartInfo.FileName = executionProgramBox.Text;
-
             // enqueue each job
-            foreach (object item in selectedListBox.Items)
+            foreach (object item in listbox_SelectedItems.Items)
             {
                 BOX job = new BOX();
 
-                job.process = general;
+                job.process = new Process();
+                job.process.StartInfo.CreateNoWindow = Properties.Settings.Default.NoWindowMode;
+                job.process.StartInfo.UseShellExecute = false;
+                job.process.StartInfo.FileName = Properties.Settings.Default.ExecutablePath;
 
                 job.process.StartInfo.Arguments = "";
                 job.process.StartInfo.Arguments += Properties.Settings.Default.Parameters + " ";
@@ -228,159 +206,50 @@ namespace MultiInputMacro
 
         }
 
-
-        /*
-
-if (selectedListBox.Items.Count < 1) return;
-
-int TIMEOUT = (int)Properties.Settings.Default.Timeout; // 5 second timeout, remove hard code
-Process myProcess = new Process();
-
-myProcess.StartInfo.CreateNoWindow = true;
-myProcess.StartInfo.UseShellExecute = false;
-
-// sets has exited to non null value, prevents an exception later
-myProcess.StartInfo.FileName = "cmd.exe";
-myProcess.Start();
-myProcess.Kill();
-
-myProcess.StartInfo.FileName = executionProgramBox.Text;
-
-try
-{
-   int i = -1; // index of item being processed
-   while (true)
-   {
-       // wait for completion up to timeout time
-       for (int elapsedTime = 100; !myProcess.HasExited && elapsedTime < TIMEOUT; elapsedTime+=100)
-       {
-           Thread.Sleep(100);
-       }
-       // if process still has not completed, end it;
-       if (!myProcess.HasExited)
-       {
-           myProcess.Kill();
-           ++i; // move to next index
-       }
-       // only if item has been processed, remove it from list
-       if (myProcess.ExitCode == 0)
-       {
-           selectedListBox.Items.RemoveAt(i);
-       }
-       else
-       {
-           ++i; // move to next index
-       }
-       // if index is out of list range, break out of execution loop
-       if (!(i < selectedListBox.Items.Count))
-       {
-           break;
-       }
-       // execution arguments
-       myProcess.StartInfo.Arguments = "";
-       myProcess.StartInfo.Arguments += Properties.Settings.Default.Parameters + " ";
-       myProcess.StartInfo.Arguments += Properties.Settings.Default.Prefix + "\"";
-       myProcess.StartInfo.Arguments += selectedListBox.Items.GetItemAt(i).ToString() + "\"";
-       // "-s \"" + selectedListBox.Items.GetItemAt(i).ToString() + "\"";
-       // execute process
-       myProcess.Start();
-   }
-}
-catch (Exception ex)
-{
-   MessageBox.Show(ex.Message);
-}
-
-}
-*/
-
-        private void autoExecCheckBox_Checked(object sender, RoutedEventArgs e)
-        {
-            Properties.Settings.Default.AutoExecute = true;
-        }
-
-        private void autoExecCheckBox_Unchecked(object sender, RoutedEventArgs e)
-        {
-            Properties.Settings.Default.AutoExecute = false;
-        }
-
         private void settingsButton_Click(object sender, RoutedEventArgs e)
         {
             Window abc = new SettingsWindow();
             abc.ShowDialog();
         }
 
-        private void window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        private void swapProgBarColors (ref ProgressBar a)
         {
-            Properties.Settings.Default.ExecutionProgram = executionProgramBox.Text;
+            Brush tmp = a.Background;
+            a.Background = a.Foreground;
+            a.Foreground = tmp;
+        }
+
+        private void toggleStatusInfoVisibility()
+        {
+            if (statusText.Visibility == Visibility.Hidden)
+            {
+                statusText.Visibility = Visibility.Visible;
+                statusDigit1.Visibility = Visibility.Visible;
+                statusSlash.Visibility = Visibility.Visible;
+                statusDigit2.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                statusText.Visibility = Visibility.Hidden;
+                statusDigit1.Visibility = Visibility.Hidden;
+                statusSlash.Visibility = Visibility.Hidden;
+                statusDigit2.Visibility = Visibility.Hidden;
+            }
         }
 
         private void progBar_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (progBar.Value >= progBar.Maximum)
             {
-                executeButton.IsEnabled = true;
-                selectedListBox.AllowDrop = true;
-                executionProgramButton.IsEnabled = true;
-                selectedFilesButton.IsEnabled = true;
+                button_Execute.IsEnabled = true;
+                listbox_SelectedItems.AllowDrop = true;
+                button_SelectFiles.IsEnabled = true;
+                button_Settings.IsEnabled = true;
+                swapProgBarColors(ref progBar);
+                toggleStatusInfoVisibility();
+                progBar.Value = 0;
+
             }
-        }
-    }
-
-    public class TextBoxWidthConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType, 
-            object parameter, CultureInfo culture) {
-            return (double)value - 152;
-        }
-
-        public object ConvertBack(object value, Type targetType, 
-            object parameter, CultureInfo culture) {
-            return null;
-        }
-    }
-
-    public class ListBoxHeightConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return (double)value - 53;
-        }
-
-        public object ConvertBack(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return null;
-        }
-    }
-
-    public class ButtonGridHeightConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return (double)value*3 + 15;
-        }
-
-        public object ConvertBack(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return null;
-        }
-    }
-    public class TopGridHeightConverter : IValueConverter
-    {
-        public object Convert(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return (double)value - 20;
-        }
-
-        public object ConvertBack(object value, Type targetType,
-            object parameter, CultureInfo culture)
-        {
-            return null;
         }
     }
 
