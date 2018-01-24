@@ -14,7 +14,6 @@ using System.Globalization;
 using System.Diagnostics;
 using System.Threading;
 using System.ComponentModel;
-using System.Windows.Media.Animation;
 
 namespace MultiInputMacro
 {
@@ -25,7 +24,7 @@ namespace MultiInputMacro
     {
         int currentRunningJobs = 0;
         private delegate void Action();
-        
+        bool cancelState = false;
 
 
         private class BOX
@@ -72,9 +71,6 @@ namespace MultiInputMacro
             e.Handled = true;
         }
 
-        // make separate preview drag overs for exes and inis
-
-
         private void selectedFilesButton_Click(object sender, RoutedEventArgs e)
         {
             Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
@@ -103,14 +99,15 @@ namespace MultiInputMacro
             {
                 items.process.Start();
 
-                for (int elapsedTime = 100; !items.process.HasExited && (elapsedTime < timeout); elapsedTime += 100)
+                for (int elapsedTime = 250; !cancelState && !items.process.HasExited && (timeout == 0 ? true : (elapsedTime < timeout)); elapsedTime += 250)
                 {
-                    Thread.Sleep(100);
+                    items.process.WaitForExit(250);
                 }
                 if (!items.process.HasExited)
                 {
                     items.process.Kill();
                 }
+
                 items.result = items.process.ExitCode;
                 e.Result = items;
             }
@@ -142,14 +139,21 @@ namespace MultiInputMacro
 
         private void dispatcher_doWork(object sender, DoWorkEventArgs e)
         {
-            Queue<BOX> jobs = e.Argument as Queue<BOX>;
-
-            while (jobs.Count > 0)
+            List<BOX> jobs = e.Argument as List<BOX>;
+            int processed = 0;
+            foreach (BOX job in jobs)
             {
-                BOX job = jobs.Dequeue();
+                if (cancelState == true)
+                {
+                    progBar.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Normal, new Action(() =>
+                    {
+                        progBar.Value += jobs.Count - processed; // adds to value jobs which loop has not gone over
+                    }));
+                    break;
+                }
                 while (currentRunningJobs >= (int)Properties.Settings.Default.MaximumInstances)
                 {
-                    Thread.Sleep(100);
+                    Thread.Sleep(250);
                 }
 
                 BackgroundWorker worker = new BackgroundWorker();
@@ -157,26 +161,44 @@ namespace MultiInputMacro
                 worker.RunWorkerCompleted += worker_complete;
                 Interlocked.Increment(ref currentRunningJobs);
                 worker.RunWorkerAsync(job);
-                Thread.Sleep(100); // ensures multiple instances are not started at the same time up to the ms resolution
+                Thread.Sleep(100); // ensures multiple instances are not started at the same time up to 100 ms resolution
+                ++processed;
             }
         }
 
-
         private void executeButton_Click(object sender, RoutedEventArgs e)
         {
-            // freeze components which could screw up execution.
+            bool confirmed = false;
+
+            if (Properties.Settings.Default.MaximumInstances > 1)
+            {
+                MessageBoxResult dlg = MessageBox.Show(string.Format("Executing with {0} max instances, are you sure?", Properties.Settings.Default.MaximumInstances),
+                    "Multiple Instances warning.", MessageBoxButton.YesNo);
+                if (dlg == MessageBoxResult.Yes)
+                    confirmed = true;
+            }
+            else confirmed = true;
+
+            if (!confirmed) return;
+
+            // ui state changes
+            cancelState = false;
             button_Execute.IsEnabled = false;
-            listbox_SelectedItems.AllowDrop = false;
+            button_Execute.Visibility = Visibility.Hidden;
+            button_Cancel.IsEnabled = true;
+            button_Cancel.Visibility = Visibility.Visible;
             button_SelectFiles.IsEnabled = false;
             button_Settings.IsEnabled = false;
+            button_ClearList.IsEnabled = false;
+            button_DeleteItem.IsEnabled = false;
+            listbox_SelectedItems.AllowDrop = false;
             progBar.Maximum = listbox_SelectedItems.Items.Count;
             swapProgBarColors(ref progBar);
             toggleStatusInfoVisibility();
             progBar.Value = progBar.Minimum = 0;
             progBar.Visibility = Visibility.Visible;
 
-
-            Queue<BOX> jobs = new Queue<BOX>();
+            List<BOX> jobs = new List<BOX>();
 
             // enqueue each job
             foreach (object item in listbox_SelectedItems.Items)
@@ -193,9 +215,11 @@ namespace MultiInputMacro
                 job.process.StartInfo.Arguments += Properties.Settings.Default.Prefix + "\"";
                 job.process.StartInfo.Arguments += item.ToString() + "\"";
 
+                job.process.StartInfo.WorkingDirectory = Properties.Settings.Default.ExecutionDirectory;
+
                 job.item = item;
 
-                jobs.Enqueue(job);
+                jobs.Add(job);
             }
 
             // give jobs to workers
@@ -242,13 +266,43 @@ namespace MultiInputMacro
             if (progBar.Value >= progBar.Maximum)
             {
                 button_Execute.IsEnabled = true;
-                listbox_SelectedItems.AllowDrop = true;
+                button_Execute.Visibility = Visibility.Visible;
+                button_Cancel.IsEnabled = false;
+                button_Cancel.Visibility = Visibility.Hidden;
                 button_SelectFiles.IsEnabled = true;
                 button_Settings.IsEnabled = true;
+                button_ClearList.IsEnabled = true;
+                button_DeleteItem.IsEnabled = true;
+                listbox_SelectedItems.AllowDrop = true;
                 swapProgBarColors(ref progBar);
                 toggleStatusInfoVisibility();
                 progBar.Value = 0;
 
+            }
+        }
+
+        private void button_Cancel_Click(object sender, RoutedEventArgs e)
+        {
+            cancelState = true;
+            button_Cancel.IsEnabled = false;
+        }
+
+        private void button_ClearList_Click(object sender, RoutedEventArgs e)
+        {
+            listbox_SelectedItems.Items.Clear();
+        }
+
+        private void button_DeleteItem_Click(object sender, RoutedEventArgs e)
+        {
+            Queue<object> tmp = new Queue<object>();
+            foreach (object item in listbox_SelectedItems.SelectedItems)
+            {
+                tmp.Enqueue(item);
+            }
+            while (tmp.Count > 0)
+            {
+                object item = tmp.Dequeue();
+                listbox_SelectedItems.Items.RemoveAt(listbox_SelectedItems.Items.IndexOf(item));
             }
         }
     }

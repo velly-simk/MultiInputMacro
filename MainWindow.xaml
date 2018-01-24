@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MultiInputMacro"
         mc:Ignorable="d"
-        x:Name="window" Title="MultiInputMacro" MinWidth="525" MinHeight="250">
+        x:Name="window" Title="MultiInputMacro" MinWidth="525" MinHeight="280" Width="525"  Height="280">
     <Window.Resources>
     </Window.Resources>
     <Grid>
@@ -18,19 +18,34 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <ListBox x:Name="listbox_SelectedItems" Margin="10" AllowDrop="True" Drop="File_Drop" PreviewDragOver="File_PreviewDragOver"/>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <ListBox x:Name="listbox_SelectedItems" Margin="10,10,10,0" AllowDrop="True" Drop="File_Drop" PreviewDragOver="File_PreviewDragOver" SelectionMode="Extended" ToolTip="Drag and drop files/folders to add to list."/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="button_ClearList" Content="Clear" Margin="10,0" Grid.Column="1" Width="50" Click="button_ClearList_Click" ToolTip="Clear all items from list."/>
+                    <Button x:Name="button_DeleteItem" Content="Delete" Margin="10,0" Grid.Column="2" Width="50" Click="button_DeleteItem_Click" ToolTip="Delete selected items from list."/>
+                </Grid>
+            </Grid>
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <Button x:Name="button_SelectFiles" Content="Select File(s)" Margin="10" Width="130" Height="30" Click="selectedFilesButton_Click"/>
-                <Button x:Name="button_SelectDirectories" Content="Select Directory/ies" Grid.Row="1" Margin="10" Height="30"/>
-                <Button x:Name="button_Settings" Content="Settings" Grid.Row="2" Margin="10" Click="settingsButton_Click" Height="30"/>
-                <Button x:Name="button_Execute" Content="Execute" Grid.Row="4"  Margin="10" Height="50" Click="executeButton_Click"/>
+                <Button x:Name="button_SelectFiles" Content="Select File(s)" Margin="10" Width="130" Height="30" Click="selectedFilesButton_Click" ToolTip="Open File browser to add items to list."/>
+                <Button x:Name="button_Settings" Content="Settings" Grid.Row="1" Margin="10" Click="settingsButton_Click" Height="30" ToolTip="Open Settings to configure macro."/>
+                <Button x:Name="button_Execute" Content="Execute" Grid.Row="3"  Margin="10" Height="50" Click="executeButton_Click" ToolTip="Execute macro."/>
+                <Button x:Name="button_Cancel" Content="Cancel" Grid.Row="3" Margin="10" Height="50" Visibility="Hidden" IsEnabled="False" Click="button_Cancel_Click" ToolTip="Cancel running macro, also force exiting running processes."/>
             </Grid>
 
         </Grid>
@@ -40,7 +55,7 @@
             <StatusBarItem x:Name="statusSlash" Visibility="Hidden" Content="/"/>
             <StatusBarItem x:Name="statusDigit2" Visibility="Hidden" Content="{Binding ElementName=progBar, Path=Maximum}"/>
             <StatusBarItem HorizontalAlignment="Right">
-                <ProgressBar x:Name="progBar" Width="{Binding ElementName=button_Execute, Path=ActualWidth}" Height="22" Margin="10,0,9,0" ValueChanged="progBar_ValueChanged" Maximum="1" BorderBrush="{x:Null}" Foreground="#FFE6E6E6" Background="#FFB400B4" Visibility="Hidden"/>
+                <ProgressBar x:Name="progBar" Width="{Binding ElementName=button_Execute, Path=ActualWidth}" Height="22" Margin="10,0,7,0" ValueChanged="progBar_ValueChanged" Maximum="1" BorderBrush="{x:Null}" Foreground="#FFE6E6E6" Background="#FF6200B4" Visibility="Hidden"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>
