@@ -37,6 +37,8 @@ namespace MultiInputMacro
         public MainWindow()
         {
             InitializeComponent();
+
+
         }
 
         ~MainWindow()

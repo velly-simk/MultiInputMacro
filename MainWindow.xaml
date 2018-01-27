@@ -44,7 +44,7 @@
                 </Grid.RowDefinitions>
                 <Button x:Name="button_SelectFiles" Content="Select File(s)" Margin="10" Width="130" Height="30" Click="selectedFilesButton_Click" ToolTip="Open File browser to add items to list."/>
                 <Button x:Name="button_Settings" Content="Settings" Grid.Row="1" Margin="10" Click="settingsButton_Click" Height="30" ToolTip="Open Settings to configure macro."/>
-                <Button x:Name="button_Execute" Content="Execute" Grid.Row="3"  Margin="10" Height="50" Click="executeButton_Click" ToolTip="Execute macro."/>
+                <Button x:Name="button_Execute" Content="Execute" Grid.Row="3"  Margin="10" Height="50" Click="executeButton_Click" IsEnabled="{Binding HasItems, ElementName=listbox_SelectedItems}" ToolTip="Execute macro."/>
                 <Button x:Name="button_Cancel" Content="Cancel" Grid.Row="3" Margin="10" Height="50" Visibility="Hidden" IsEnabled="False" Click="button_Cancel_Click" ToolTip="Cancel running macro, also force exiting running processes."/>
             </Grid>
 

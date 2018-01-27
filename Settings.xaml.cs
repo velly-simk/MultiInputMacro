@@ -40,8 +40,6 @@ namespace MultiInputMacro
 
         private void button_Okay_Click(object sender, RoutedEventArgs e)
         {
-            // Test executable
-
             Properties.Settings.Default.ExecutablePath = textBox_ExecutablePath.Text;
 
             Properties.Settings.Default.ExecutionDirectory = textBox_ExecuteDirectory.Text;
